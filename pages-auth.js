@@ -25,13 +25,15 @@
     if (!result.ok) throw new Error('質問ファイルを読み込めませんでした。');
     const encrypted = await result.json();
     try {
-      const password = JSON.parse(options.body).password;
+      if (!globalThis.crypto?.subtle) throw new Error('CRYPTO_UNAVAILABLE');
+      const password = JSON.parse(options.body).password.trim();
       const material = await crypto.subtle.importKey('raw', new TextEncoder().encode(password), 'PBKDF2', false, ['deriveKey']);
       const key = await crypto.subtle.deriveKey({name: 'PBKDF2', salt: bytes(encrypted.salt), iterations: encrypted.iterations, hash: 'SHA-256'}, material, {name: 'AES-GCM', length: 256}, false, ['decrypt']);
       const plain = await crypto.subtle.decrypt({name: 'AES-GCM', iv: bytes(encrypted.iv)}, key, bytes(encrypted.data));
       questions = JSON.parse(new TextDecoder().decode(plain));
       return response(200, {});
-    } catch {
+    } catch (error) {
+      if (error.message === 'CRYPTO_UNAVAILABLE') return response(400, {error: 'このブラウザーでは開けません。Safari または Chrome でサイトの HTTPS URL を開いてください。'});
       return response(401, {error: 'パスワードが違います。もう一度お試しください。'});
     }
   };

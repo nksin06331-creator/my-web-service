@@ -82,12 +82,18 @@ async function load() {
   if (!response.ok) throw new Error('読み込みに失敗しました。もう一度お試しください。');
   groups = await response.json(); render(); return true;
 }
+$('show-password').addEventListener('click', () => {
+  const show = $('password').type === 'password';
+  $('password').type = show ? 'text' : 'password';
+  $('show-password').textContent = show ? 'パスワードを隠す' : 'パスワードを表示';
+  $('show-password').setAttribute('aria-pressed', String(show));
+});
 $('login-form').addEventListener('submit', async event => {
   event.preventDefault(); $('login-button').disabled = true; $('login-error').textContent = '';
   try {
-    const response = await api('/api/login', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({password: $('password').value})});
+    const response = await api('/api/login', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({password: $('password').value.trim()})});
     if (!response.ok) { const result = await response.json(); throw new Error(result.error); }
-    $('password').value = '';
+    $('password').value = ''; $('password').type = 'password'; $('show-password').textContent = 'パスワードを表示'; $('show-password').setAttribute('aria-pressed', 'false');
     if (!await load()) throw new Error('セッションを確認できませんでした。再度ログインしてください。');
   } catch (error) { $('login-error').textContent = error.message || '接続できませんでした。'; }
   finally { $('login-button').disabled = false; }
