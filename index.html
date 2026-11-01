@@ -1,12 +1,13 @@
 <!doctype html>
 <html lang="ja">
-<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>サロン開業準備ノート</title><link rel="stylesheet" href="./style.css"><script src="./pages-auth.js" defer></script><script src="./app.js" defer></script></head>
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>あなたへの質問ノート</title><link rel="stylesheet" href="./style.css"><script src="./pages-auth.js" defer></script><script src="./app.js" defer></script></head>
 <body>
-<header><a href="./" class="brand">S<span>·</span>NOTE <small>サロン開業準備ノート</small></a><span class="badge">テスト版</span></header>
+<header><a href="./" class="brand">S<span>·</span>NOTE <small>あなたへの質問ノート</small></a><span class="badge">テスト版</span></header>
 <main>
-<section id="login" class="login card"><div class="eyebrow">YOUR NEXT CHAPTER</div><h1>夢のサロンへ、<br>ひとつずつ。</h1><p>あなた専用の開業準備チェックリストです。<br>共有されたパスワードで開いてください。</p><form id="login-form"><label for="password">パスワード</label><input id="password" type="password" autocomplete="current-password" required maxlength="256"><button type="submit" id="login-button">チェックリストを開く <span>→</span></button><p id="login-error" role="alert"></p></form></section>
+<section id="recipient-picker" class="login card" hidden><div class="eyebrow">YOUR PERSONAL NOTE</div><h1>どなたへの<br>質問ですか？</h1><p>ご自分の宛先を選んでください。<br>次の画面でパスワードを入力します。</p><div id="recipient-buttons"></div><p id="recipient-error" role="alert"></p></section>
+<section id="login" class="login card"><div class="eyebrow">YOUR PERSONAL NOTE</div><h1 id="login-title">あなたへの質問</h1><p>共有されたパスワードで開いてください。</p><button id="back-to-recipients" class="quiet" type="button" hidden>← 宛先を選び直す</button><form id="login-form"><label for="password">パスワード</label><input id="password" type="password" autocomplete="current-password" required maxlength="256"><button type="submit" id="login-button">チェックリストを開く <span>→</span></button><p id="login-error" role="alert"></p></form></section>
 <section id="workspace" hidden>
-<div class="intro"><div><div class="eyebrow">SALON OPENING PLAN</div><h1>開業までの道のり</h1><p>できたことにチェック。決まったことや相談したいことを、自由に書き込んでください。</p></div><button id="logout" class="quiet">ログアウト</button></div>
+<div class="intro"><div><div class="eyebrow">SALON OPENING PLAN</div><h1 id="form-title">開業までの道のり</h1><p>できたことにチェック。決まったことや相談したいことを、自由に書き込んでください。</p></div><button id="logout" class="quiet">ログアウト</button></div>
 <div class="summary card"><div><span class="eyebrow">YOUR PROGRESS</span><p><strong id="count">0</strong> <span id="total"></span> 完了</p></div><div class="progress-area"><div class="track"><div id="progress"></div></div><span id="percent">0%</span></div></div>
 <div class="card details"><label for="name">お名前 <span class="optional">任意</span></label><input id="name" placeholder="例：山田 花子" maxlength="100"><p class="hint">回答はこの端末・このブラウザー内に自動保存され、サーバーには送信されません。再度開くと続きから入力できます。共有端末では、使い終わったら保存した回答を削除してください。</p><p id="save-status" class="hint" role="status" aria-live="polite"></p><button id="clear-draft" class="quiet" type="button">保存した回答を削除</button></div>
 <nav id="months" aria-label="月別チェックリスト"></nav><div id="sections"></div>

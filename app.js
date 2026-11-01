@@ -2,7 +2,9 @@ const api = (...args) => window.formAPI ? window.formAPI(...args) : fetch(...arg
 const $ = id => document.getElementById(id);
 let groups = [];
 let dirty = false;
-const STORAGE_KEY = 'salon-opening-plan:2026-11:v1';
+let selectedRecipient = null;
+let recipients = [];
+let STORAGE_KEY = 'salon-opening-plan:2026-11:v1';
 const itemKey = (group, text) => JSON.stringify([group.month, text]);
 function saveDraft() {
   try {
@@ -71,6 +73,7 @@ function render() {
     });
     $('sections').append(section);
   });
+  $('form-title').textContent = selectedRecipient?.title || '開業までの道のり';
   restoreDraft(); updateProgress(); $('login').hidden = true; $('workspace').hidden = false;
 }
 async function load() {
@@ -91,7 +94,7 @@ $('login-form').addEventListener('submit', async event => {
 });
 $('workspace').addEventListener('input', () => { dirty = true; $('copy-status').textContent = ''; $('fallback').hidden = true; updateProgress(); saveDraft(); });
 function answerText() {
-  const lines = ['サロン開業準備チェックリスト', `お名前：${$('name').value.trim() || '未記入'}`, ''];
+  const lines = [selectedRecipient?.title || 'サロン開業準備チェックリスト', ...(selectedRecipient ? [`宛先：${selectedRecipient.label}`] : []), `お名前：${$('name').value.trim() || '未記入'}`, ''];
   groups.forEach((g, m) => {
     lines.push(`${g.month}｜${g.title}`);
     g.items.forEach((text, i) => {
@@ -140,4 +143,36 @@ $('clear-draft').addEventListener('click', () => {
   $('save-status').textContent = '保存した回答を削除しました。';
 });
 window.addEventListener('beforeunload', event => { if (dirty) { event.preventDefault(); event.returnValue = ''; } });
-load().catch(error => { $('login-error').textContent = error.message; });
+async function initialize() {
+  if (!window.formAPI) return load();
+  $('login').hidden = true;
+  $('recipient-picker').hidden = false;
+  const result = await api('/api/recipients');
+  if (!result.ok) throw new Error('宛先を読み込めませんでした。再読み込みしてください。');
+  recipients = await result.json();
+  for (const recipient of recipients) {
+    const button = node('button', `${recipient.label} →`, 'recipient-button');
+    button.type = 'button';
+    button.addEventListener('click', async () => {
+      try {
+        const result = await api('/api/select', {body: JSON.stringify({id: recipient.id})});
+        if (!result.ok) throw new Error('宛先を選択できませんでした。');
+        selectedRecipient = recipient;
+        STORAGE_KEY = recipient.storageKey;
+        $('login-title').textContent = `${recipient.label}への質問`;
+        $('login-error').textContent = ''; $('password').value = '';
+        $('recipient-picker').hidden = true; $('login').hidden = false;
+        $('back-to-recipients').hidden = false; $('password').focus();
+      } catch (error) { $('recipient-error').textContent = error.message; }
+    });
+    $('recipient-buttons').append(button);
+  }
+}
+$('back-to-recipients').addEventListener('click', async () => {
+  await api('/api/logout', {method: 'POST'});
+  selectedRecipient = null; $('password').value = ''; $('login-error').textContent = '';
+  $('login').hidden = true; $('recipient-picker').hidden = false;
+});
+initialize().catch(error => {
+  (window.formAPI ? $('recipient-error') : $('login-error')).textContent = error.message;
+});
