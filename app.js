@@ -1,12 +1,14 @@
 const api = (...args) => window.formAPI ? window.formAPI(...args) : fetch(...args);
 const $ = id => document.getElementById(id);
 let groups = [];
+let salonQuestions = null;
 let dirty = false;
 let selectedRecipient = null;
 let recipients = [];
 let STORAGE_KEY = 'salon-opening-plan:2026-11:v1';
 const itemKey = (group, text) => JSON.stringify([group.month, text]);
 function saveDraft() {
+  if (salonQuestions) return saveSalonDraft();
   try {
     const items = {};
     groups.forEach((g, m) => g.items.forEach((text, i) => {
@@ -42,6 +44,7 @@ function restoreDraft() {
 
 const node = (tag, text, cls) => { const el = document.createElement(tag); if (text) el.textContent = text; if (cls) el.className = cls; return el; };
 function updateProgress() {
+  if (salonQuestions) return updateSalonProgress();
   const checks = [...document.querySelectorAll('.task-check')];
   const done = checks.filter(el => el.checked).length;
   $('count').textContent = done;
@@ -80,7 +83,11 @@ async function load() {
   const response = await api('/api/questions');
   if (response.status === 401) return false;
   if (!response.ok) throw new Error('読み込みに失敗しました。もう一度お試しください。');
-  groups = await response.json(); render(); return true;
+  const data = await response.json();
+  salonQuestions = selectedRecipient?.id === 'salon' && data.schema === 'salon-status-v2' ? data.questions : null;
+  configureRecipientView();
+  if (salonQuestions) renderSalon(); else { groups = data; render(); }
+  return true;
 }
 $('show-password').addEventListener('click', () => {
   const show = $('password').type === 'password';
@@ -100,6 +107,7 @@ $('login-form').addEventListener('submit', async event => {
 });
 $('workspace').addEventListener('input', () => { dirty = true; $('copy-status').textContent = ''; $('fallback').hidden = true; updateProgress(); saveDraft(); });
 function answerText() {
+  if (salonQuestions) return salonAnswerText();
   const lines = [selectedRecipient?.title || 'サロン開業準備チェックリスト', ...(selectedRecipient ? [`宛先：${selectedRecipient.label}`] : []), `お名前：${$('name').value.trim() || '未記入'}`, ''];
   groups.forEach((g, m) => {
     lines.push(`${g.month}｜${g.title}`);
@@ -127,7 +135,7 @@ $('logout').addEventListener('click', async () => {
   try {
     const response = await api('/api/logout', {method: 'POST'});
     if (!response.ok) throw new Error();
-    groups = []; dirty = false; $('sections').replaceChildren(); $('months').replaceChildren();
+    groups = []; salonQuestions = null; dirty = false; $('sections').replaceChildren(); $('months').replaceChildren();
     $('name').value = ''; $('overall').value = ''; $('export-text').value = ''; $('fallback').hidden = true; $('copy-status').textContent = '';
     $('workspace').hidden = true; $('login').hidden = false; $('password').focus();
   } catch { $('copy-status').textContent = 'ログアウトできませんでした。接続を確認してください。'; }
@@ -141,7 +149,10 @@ $('clear-draft').addEventListener('click', () => {
     return;
   }
   $('name').value = ''; $('overall').value = '';
-  groups.forEach((g, m) => g.items.forEach((text, i) => {
+  if (salonQuestions) {
+    document.querySelectorAll('.salon-choice').forEach(el => { el.checked = false; });
+    salonQuestions.forEach(q => { $(`salon-memo-${q.id}`).value = ''; });
+  } else groups.forEach((g, m) => g.items.forEach((text, i) => {
     $(`check-${m}-${i}`).checked = false; $(`memo-${m}-${i}`).value = '';
   }));
   $('export-text').value = ''; $('fallback').hidden = true; $('copy-status').textContent = '';
@@ -149,6 +160,95 @@ $('clear-draft').addEventListener('click', () => {
   $('save-status').textContent = '保存した回答を削除しました。';
 });
 window.addEventListener('beforeunload', event => { if (dirty) { event.preventDefault(); event.returnValue = ''; } });
+
+const viewTargets = [
+  ['.intro .eyebrow', 'APRIL 2027 · SALON OPENING'],
+  ['.intro p', '2027年4月のサロン開業に向けて、今の状況を教えてください。各質問で当てはまるものを選んでください。補足の記入は任意です。'],
+  ['.summary .eyebrow', 'YOUR ANSWERS'],
+  ['.closing label', '今、決められずにいること・気になっていること（任意）'],
+  ['.export p', '選択した回答と記入内容をまとめてコピーできます。コピーしたテキストを、メッセージなどに貼り付けて送ってください。']
+].map(([selector, salon]) => ({el: document.querySelector(selector), salon, original: document.querySelector(selector).innerHTML}));
+const originalSummary = document.querySelector('.summary p').lastChild.textContent;
+const originalPlaceholder = $('overall').placeholder;
+function configureRecipientView() {
+  viewTargets.forEach(({el, salon, original}) => { if (salonQuestions) el.textContent = salon; else el.innerHTML = original; });
+  document.querySelector('.summary p').lastChild.textContent = salonQuestions ? ' 回答済み' : originalSummary;
+  $('overall').placeholder = salonQuestions ? '自由にご記入ください（任意）' : originalPlaceholder;
+  $('months').hidden = !!salonQuestions;
+}
+function salonValues(q) {
+  return [...document.querySelectorAll(`input[name="salon-${q.id}"]:checked`)].map(el => el.value);
+}
+function updateSalonProgress() {
+  const done = salonQuestions.filter(q => salonValues(q).length).length;
+  $('count').textContent = done;
+  $('total').textContent = `/ ${salonQuestions.length}`;
+  $('percent').textContent = `${Math.round(done / salonQuestions.length * 100)}%`;
+  $('progress').style.width = $('percent').textContent;
+}
+function saveSalonDraft() {
+  try {
+    const answers = {};
+    salonQuestions.forEach(q => { answers[q.id] = {values: salonValues(q), memo: $(`salon-memo-${q.id}`).value}; });
+    localStorage.setItem(STORAGE_KEY, JSON.stringify({version: 2, schema: 'salon-status-v2', name: $('name').value, overall: $('overall').value, answers}));
+    dirty = false;
+    $('save-status').textContent = 'このブラウザーに保存しました。';
+  } catch {
+    dirty = true;
+    $('save-status').textContent = 'このブラウザーに保存できません。画面を閉じる前に回答をコピーしてください。';
+  }
+}
+function renderSalon() {
+  groups = [];
+  $('sections').replaceChildren(); $('months').replaceChildren();
+  $('name').value = ''; $('overall').value = '';
+  salonQuestions.forEach((q, i) => {
+    const section = node('fieldset', '', 'card salon-question');
+    section.append(node('legend', `${i + 1}. ${q.title}${q.multiple ? '【複数選択】' : ''}`));
+    q.options.forEach((option, j) => {
+      const label = node('label', '', 'salon-option');
+      const input = node('input'); input.type = q.multiple ? 'checkbox' : 'radio';
+      input.name = `salon-${q.id}`; input.id = `salon-${q.id}-${j}`;
+      input.value = option; input.className = 'salon-choice';
+      label.append(input, node('span', option)); section.append(label);
+    });
+    const label = node('label', q.id === 'region' ? '地域（任意）' : '補足（任意）');
+    label.htmlFor = `salon-memo-${q.id}`;
+    const memo = node('textarea'); memo.id = label.htmlFor; memo.rows = 2; memo.placeholder = '任意でご記入ください';
+    section.append(label, memo); $('sections').append(section);
+  });
+  $('form-title').textContent = selectedRecipient.title;
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (raw) {
+      const draft = JSON.parse(raw);
+      if (draft?.version !== 2 || draft.schema !== 'salon-status-v2' || !draft.answers || typeof draft.answers !== 'object') throw new Error();
+      $('name').value = typeof draft.name === 'string' ? draft.name : '';
+      $('overall').value = typeof draft.overall === 'string' ? draft.overall : '';
+      salonQuestions.forEach(q => {
+        const answer = draft.answers[q.id];
+        if (!answer || typeof answer !== 'object') return;
+        const values = Array.isArray(answer.values) ? answer.values.filter(value => q.options.includes(value)) : [];
+        document.querySelectorAll(`input[name="salon-${q.id}"]`).forEach(el => { el.checked = (q.multiple ? values : values.slice(0, 1)).includes(el.value); });
+        $(`salon-memo-${q.id}`).value = typeof answer.memo === 'string' ? answer.memo : '';
+      });
+      $('save-status').textContent = 'このブラウザーに保存した回答を復元しました。';
+    } else $('save-status').textContent = '入力すると、このブラウザーに自動保存されます。';
+  } catch { $('save-status').textContent = '保存済みの回答を読み込めませんでした。入力内容はコピーで控えてください。'; }
+  dirty = false; updateSalonProgress(); $('login').hidden = true; $('workspace').hidden = false;
+}
+function salonAnswerText() {
+  const lines = [selectedRecipient.title, `宛先：${selectedRecipient.label}`, `お名前：${$('name').value.trim() || '未記入'}`, ''];
+  salonQuestions.forEach((q, i) => {
+    lines.push(`${i + 1}. ${q.title}${q.multiple ? '【複数選択】' : ''}`, `回答：${salonValues(q).join('／') || '未回答'}`);
+    const memo = $(`salon-memo-${q.id}`).value.trim();
+    if (memo) lines.push(`${q.id === 'region' ? '地域' : '補足'}：${memo}`);
+    lines.push('');
+  });
+  lines.push('今、決められずにいること・気になっていること', $('overall').value.trim() || '未記入');
+  return lines.join('\n');
+}
+
 async function initialize() {
   if (!window.formAPI) return load();
   $('login').hidden = true;
@@ -164,6 +264,7 @@ async function initialize() {
         const result = await api('/api/select', {body: JSON.stringify({id: recipient.id})});
         if (!result.ok) throw new Error('宛先を選択できませんでした。');
         selectedRecipient = recipient;
+        $('login-button').firstChild.textContent = recipient.id === 'salon' ? '質問フォームを開く ' : 'チェックリストを開く ';
         STORAGE_KEY = recipient.storageKey;
         $('login-title').textContent = `${recipient.label}への質問`;
         $('login-error').textContent = ''; $('password').value = '';
