@@ -143,6 +143,9 @@ $('logout').addEventListener('click', async () => {
 $('clear-draft').addEventListener('click', () => {
   if (!confirm('このブラウザーに保存した回答と、現在の入力内容を削除しますか？')) return;
   try {
+    if (selectedRecipient?.id === 'salon') {
+      localStorage.removeItem('salon-opening-plan:2026-11:v1');
+    }
     localStorage.removeItem(STORAGE_KEY);
   } catch {
     $('save-status').textContent = '保存データを削除できませんでした。ブラウザーのサイトデータ設定を確認してください。';
