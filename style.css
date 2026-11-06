@@ -3,3 +3,42 @@
 .recipient-button{display:block;width:100%;text-align:left;margin:14px 0;padding:20px 22px}#recipient-error{color:#a03e37}
 
 .salon-question{min-width:0;margin:28px 0;padding:22px 28px}.salon-question legend{font-size:18px;font-weight:600;padding:0 8px}.salon-option{display:flex;align-items:center;gap:12px;padding:10px 0;cursor:pointer}.salon-option input.salon-choice{display:inline-block;width:19px;height:19px;margin:0;flex-shrink:0;accent-color:var(--green)}.salon-question textarea{margin-bottom:0}.salon-question>label:not(.salon-option){margin-top:18px}@media(max-width:600px){.salon-question{padding:18px}.salon-question legend{font-size:16px}}
+
+
+/* Comfortable controls and a persistent route through long questionnaires. */
+:root{--green:#315d4c;--muted:#586b62}
+body{background:radial-gradient(ellipse at top left,#eaf0e6 0,transparent 60%),#f5f5ee}
+header{border-top:4px solid var(--green)}
+button,.share-link,nav a{min-height:44px;touch-action:manipulation}
+input:not([type=checkbox]),textarea{font-size:16px}
+input[type=radio]{width:auto}
+textarea{line-height:1.8}
+.card{box-shadow:0 6px 24px #293e3805}
+.login{box-shadow:0 18px 60px #293e380a}
+.login h1{font-size:clamp(30px,5vw,40px)}
+.recipient-button{position:relative;transition:transform .15s,background .15s}
+.recipient-button:hover{transform:translateY(-2px)}
+.workspace-tools{position:sticky;top:12px;z-index:5;margin:24px 0;padding:14px 20px;background:#fffefaf5;border:1px solid #d8dfd4;border-radius:14px;box-shadow:0 6px 24px #293e3810;backdrop-filter:blur(12px)}
+.workspace-tools p{font-size:12px;margin:0 0 10px;color:var(--ink)}
+.workspace-tools>div{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+.workspace-tools button{padding:10px 18px}
+.share-link{display:inline-flex;align-items:center;padding:8px 12px;color:var(--green);font-size:13px;text-underline-offset:4px}
+.salon-question{transition:border-color .2s;scroll-margin-top:160px}
+.salon-question.is-answered{border-color:#94ae9c}
+.salon-option{border:1px solid var(--line);border-radius:10px;padding:14px 16px;margin:10px 0;min-height:52px;background:#fff;transition:background .15s,border-color .15s}
+.salon-option:hover{background:#f3f6ef;border-color:#9aae9d}
+.salon-option:has(input:checked){background:#eaf2e9;border-color:#6c9076;color:#244c39;font-weight:600}
+.salon-option:focus-within{outline:2px solid #6c9076;outline-offset:3px}
+.salon-question .clear-choice{display:block;margin:14px 0 0;font-size:12px;cursor:pointer}
+.clear-choice:disabled{cursor:default;opacity:.4}
+.check-label{min-height:44px;align-items:center}
+.task-check{width:22px;height:22px;margin:0}
+.task.is-answered{background:#f4f7f0;border-radius:8px}
+#share{scroll-margin-top:160px}
+#copy{min-width:220px}
+#save-status:not(:empty){color:var(--green);font-weight:500}
+#clear-draft{color:#8d4941;font-size:12px}
+.skip-link{position:absolute;top:-100px;left:16px;background:white;padding:12px;z-index:20}
+.skip-link:focus{top:10px}
+@media(max-width:600px){.workspace-tools{top:8px;padding:12px 14px;margin:20px 0}.workspace-tools>div{gap:6px}.workspace-tools p{line-height:1.6}.workspace-tools button{font-size:13px}.share-link{font-size:12px;padding:8px}.summary{flex-wrap:wrap}.progress-area{width:100%}.salon-option{padding:13px 12px}.intro h1{font-size:29px}.export button{width:100%}.salon-question legend{line-height:1.8}.task textarea{font-size:16px}}
+@media(prefers-reduced-motion:reduce){*,*::before,*::after{scroll-behavior:auto!important;transition:none!important}}
