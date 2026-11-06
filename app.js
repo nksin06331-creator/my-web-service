@@ -49,8 +49,9 @@ function updateProgress() {
   const done = checks.filter(el => el.checked).length;
   $('count').textContent = done;
   $('total').textContent = `/ ${checks.length}`;
-  $('percent').textContent = `${Math.round(done / checks.length * 100)}%`;
+  $('percent').textContent = `${(checks.length ? Math.round(done / checks.length * 100) : 0)}%`;
   $('progress').style.width = $('percent').textContent;
+  updateNavigation();
   groups.forEach((g, m) => {
     const n = document.querySelectorAll(`#month-${m} .task-check:checked`).length;
     $(`month-count-${m}`).textContent = `${n} / ${g.items.length}`;
@@ -77,7 +78,7 @@ function render() {
     $('sections').append(section);
   });
   $('form-title').textContent = selectedRecipient?.title || '開業までの道のり';
-  restoreDraft(); updateProgress(); $('login').hidden = true; $('workspace').hidden = false;
+  restoreDraft(); updateProgress(); $('login').hidden = true; $('workspace').hidden = false; focusWorkspace();
 }
 async function load() {
   const response = await api('/api/questions');
@@ -96,14 +97,14 @@ $('show-password').addEventListener('click', () => {
   $('show-password').setAttribute('aria-pressed', String(show));
 });
 $('login-form').addEventListener('submit', async event => {
-  event.preventDefault(); $('login-button').disabled = true; $('login-error').textContent = '';
+  event.preventDefault(); $('login-button').disabled = true; $('login-form').setAttribute('aria-busy', 'true'); $('login-error').textContent = '';
   try {
     const response = await api('/api/login', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({password: $('password').value.trim()})});
     if (!response.ok) { const result = await response.json(); throw new Error(result.error); }
     $('password').value = ''; $('password').type = 'password'; $('show-password').textContent = 'パスワードを表示'; $('show-password').setAttribute('aria-pressed', 'false');
     if (!await load()) throw new Error('セッションを確認できませんでした。再度ログインしてください。');
   } catch (error) { $('login-error').textContent = error.message || '接続できませんでした。'; }
-  finally { $('login-button').disabled = false; }
+  finally { $('login-button').disabled = false; $('login-form').removeAttribute('aria-busy'); }
 });
 $('workspace').addEventListener('input', () => { dirty = true; $('copy-status').textContent = ''; $('fallback').hidden = true; updateProgress(); saveDraft(); });
 function answerText() {
@@ -186,8 +187,9 @@ function updateSalonProgress() {
   const done = salonQuestions.filter(q => salonValues(q).length).length;
   $('count').textContent = done;
   $('total').textContent = `/ ${salonQuestions.length}`;
-  $('percent').textContent = `${Math.round(done / salonQuestions.length * 100)}%`;
+  $('percent').textContent = `${(salonQuestions.length ? Math.round(done / salonQuestions.length * 100) : 0)}%`;
   $('progress').style.width = $('percent').textContent;
+  updateNavigation();
 }
 function saveSalonDraft() {
   try {
@@ -206,7 +208,7 @@ function renderSalon() {
   $('sections').replaceChildren(); $('months').replaceChildren();
   $('name').value = ''; $('overall').value = '';
   salonQuestions.forEach((q, i) => {
-    const section = node('fieldset', '', 'card salon-question');
+    const section = node('fieldset', '', 'card salon-question'); section.id = `question-${i}`;
     section.append(node('legend', `${i + 1}. ${q.title}${q.multiple ? '【複数選択】' : ''}`));
     q.options.forEach((option, j) => {
       const label = node('label', '', 'salon-option');
@@ -218,7 +220,10 @@ function renderSalon() {
     const label = node('label', q.id === 'region' ? '地域（任意）' : '補足（任意）');
     label.htmlFor = `salon-memo-${q.id}`;
     const memo = node('textarea'); memo.id = label.htmlFor; memo.rows = 2; memo.placeholder = '任意でご記入ください';
-    section.append(label, memo); $('sections').append(section);
+    const clear = node('button', '選択を解除', 'quiet clear-choice'); clear.type = 'button';
+    clear.setAttribute('aria-label', `${q.title} の選択を解除`);
+    clear.addEventListener('click', () => { section.querySelectorAll('.salon-choice').forEach(el => { el.checked = false; }); section.dispatchEvent(new Event('input', {bubbles: true})); });
+    section.append(clear, label, memo); $('sections').append(section);
   });
   $('form-title').textContent = selectedRecipient.title;
   try {
@@ -238,7 +243,7 @@ function renderSalon() {
       $('save-status').textContent = 'このブラウザーに保存した回答を復元しました。';
     } else $('save-status').textContent = '入力すると、このブラウザーに自動保存されます。';
   } catch { $('save-status').textContent = '保存済みの回答を読み込めませんでした。入力内容はコピーで控えてください。'; }
-  dirty = false; updateSalonProgress(); $('login').hidden = true; $('workspace').hidden = false;
+  dirty = false; updateSalonProgress(); $('login').hidden = true; $('workspace').hidden = false; focusWorkspace();
 }
 function salonAnswerText() {
   const lines = [selectedRecipient.title, `宛先：${selectedRecipient.label}`, `お名前：${$('name').value.trim() || '未記入'}`, ''];
@@ -285,4 +290,34 @@ $('back-to-recipients').addEventListener('click', async () => {
 });
 initialize().catch(error => {
   (window.formAPI ? $('recipient-error') : $('login-error')).textContent = error.message;
+});
+
+
+function incompleteControls() {
+  if (salonQuestions) return salonQuestions.filter(q => !salonValues(q).length).map(q => document.querySelector(`input[name="salon-${q.id}"]`));
+  return [...document.querySelectorAll('.task-check')].filter(el => !el.checked);
+}
+function updateNavigation() {
+  const remaining = incompleteControls().length;
+  const noun = salonQuestions ? '未回答' : '未完了';
+  $('next-status').textContent = remaining ? `${noun} あと${remaining}件 · 途中で閉じても続きから入力できます` : 'すべて入力できました。回答をコピーして共有できます。';
+  $('next-incomplete').textContent = remaining ? `${noun}へ進む ↓` : '回答を確認・共有 ↗';
+  document.querySelector('.track').setAttribute('aria-valuenow', String(parseInt($('percent').textContent, 10) || 0));
+  document.querySelectorAll('.salon-question').forEach(section => {
+    const answered = !!section.querySelector('.salon-choice:checked');
+    section.classList.toggle('is-answered', answered);
+    section.querySelector('.clear-choice').disabled = !answered;
+  });
+  document.querySelectorAll('.task').forEach(row => row.classList.toggle('is-answered', row.querySelector('.task-check').checked));
+}
+function focusWorkspace() {
+  $('form-title').tabIndex = -1;
+  $('form-title').focus({preventScroll: true});
+  window.scrollTo({top: 0, behavior: 'instant'});
+}
+$('next-incomplete').addEventListener('click', () => {
+  const controls = incompleteControls();
+  const target = controls.find(el => el.getBoundingClientRect().top > 180) || controls[0] || $('copy');
+  target.focus({preventScroll: true});
+  target.scrollIntoView({block: 'center', behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'instant' : 'smooth'});
 });
