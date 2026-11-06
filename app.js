@@ -188,11 +188,11 @@ function configureRecipientView() {
   $('months').hidden = !!salonQuestions;
   document.querySelector('.closing').hidden = !!hearingData;
   if (hearingData) {
-    document.querySelector('.intro .eyebrow').textContent = 'SUMIRE · WORK IMPROVEMENT';
+    document.querySelector('.intro .eyebrow').textContent = hearingData.eyebrow || 'SUMIRE · WORK IMPROVEMENT';
     document.querySelector('.intro p').textContent = `目的：${hearingData.purpose} 分かる範囲でご記入ください。`;
     document.querySelector('.summary .eyebrow').textContent = 'YOUR ANSWERS';
     document.querySelector('.summary p').lastChild.textContent = ' 回答済み';
-    document.querySelector('.export p').textContent = '質問への回答とヒアリング後の整理をまとめてコピーできます。メッセージなどに貼り付けて共有してください。';
+    document.querySelector('.export p').textContent = `質問への回答と${hearingData.summaryTitle || 'ヒアリング後の整理'}をまとめてコピーできます。メッセージなどに貼り付けて共有してください。`;
   }
 }
 function salonValues(q) {
@@ -287,7 +287,7 @@ async function initialize() {
         const result = await api('/api/select', {body: JSON.stringify({id: recipient.id})});
         if (!result.ok) throw new Error('宛先を選択できませんでした。');
         selectedRecipient = recipient;
-        $('login-button').firstChild.textContent = ['salon', 'sumire'].includes(recipient.id) ? '質問フォームを開く ' : 'チェックリストを開く ';
+        $('login-button').firstChild.textContent = ['salon', 'sumire', 'fukushoji'].includes(recipient.id) ? '質問フォームを開く ' : 'チェックリストを開く ';
         STORAGE_KEY = recipient.storageKey;
         $('login-title').textContent = `${recipient.label}への質問`;
         $('login-error').textContent = ''; $('password').value = '';
@@ -374,15 +374,22 @@ function renderHearing() {
       const label = node('label', q.title); label.htmlFor = `hearing-${q.id}`;
       const answer = node('textarea'); answer.id = label.htmlFor; answer.className = 'hearing-answer'; answer.rows = 4;
       answer.placeholder = '回答をご記入ください（分かる範囲で構いません）';
-      row.append(label, answer); section.append(row);
+      row.append(label);
+      if (q.prompts?.length) {
+        const prompts = node('ul', '', 'hint'); prompts.id = `hearing-hints-${q.id}`;
+        q.prompts.forEach(text => prompts.append(node('li', text)));
+        answer.setAttribute('aria-describedby', prompts.id); row.append(prompts);
+      }
+      row.append(answer); section.append(row);
     });
   });
-  const summary = addSection('ヒアリング後の整理', 'hearing-summary');
-  summary.append(node('p', 'ヒアリング後に記入する欄です。質問の回答数には含まれません。', 'hint'));
+  const summary = addSection(hearingData.summaryTitle || 'ヒアリング後の整理', 'hearing-summary');
+  summary.append(node('p', hearingData.summaryHelp || 'ヒアリング後に記入する欄です。質問の回答数には含まれません。', 'hint'));
   hearingData.summary.forEach((title, i) => {
     const label = node('label', title); label.htmlFor = `hearing-summary-${i}`;
-    const answer = node('textarea'); answer.id = label.htmlFor; answer.rows = 3; answer.className = 'hearing-summary'; answer.placeholder = '整理した内容をご記入ください'; summary.append(label, answer);
+    const answer = node('textarea'); answer.id = label.htmlFor; answer.rows = 3; answer.className = 'hearing-summary'; answer.placeholder = hearingData.summaryPlaceholder || '整理した内容をご記入ください'; summary.append(label, answer);
   });
+  if (hearingData.note) summary.append(node('p', `※${hearingData.note}`, 'hint'));
   $('form-title').textContent = selectedRecipient.title;
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
@@ -401,9 +408,10 @@ function hearingAnswerText() {
   const lines = [selectedRecipient.title, `目的：${hearingData.purpose}`, `お名前：${$('name').value.trim() || '未記入'}`, ''];
   hearingData.sections.forEach((group, i) => {
     lines.push(`${i + 1}. ${group.title}`, '');
-    group.items.forEach(q => lines.push(q.title, `回答：${$(`hearing-${q.id}`).value.trim() || '未回答'}`, ''));
+    group.items.forEach(q => lines.push(q.title, ...(q.prompts || []).map(text => `・${text}`), `回答：${$(`hearing-${q.id}`).value.trim() || '未回答'}`, ''));
   });
-  lines.push('ヒアリング後の整理', '');
+  lines.push(hearingData.summaryTitle || 'ヒアリング後の整理', '');
   hearingData.summary.forEach((title, i) => lines.push(`${title}：`, $(`hearing-summary-${i}`).value.trim() || '未記入', ''));
+  if (hearingData.note) lines.push(`※${hearingData.note}`);
   return lines.join('\n');
 }
