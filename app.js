@@ -2,12 +2,14 @@ const api = (...args) => window.formAPI ? window.formAPI(...args) : fetch(...arg
 const $ = id => document.getElementById(id);
 let groups = [];
 let salonQuestions = null;
+let hearingData = null;
 let dirty = false;
 let selectedRecipient = null;
 let recipients = [];
 let STORAGE_KEY = 'salon-opening-plan:2026-11:v1';
 const itemKey = (group, text) => JSON.stringify([group.month, text]);
 function saveDraft() {
+  if (hearingData) return saveHearingDraft();
   if (salonQuestions) return saveSalonDraft();
   try {
     const items = {};
@@ -44,6 +46,7 @@ function restoreDraft() {
 
 const node = (tag, text, cls) => { const el = document.createElement(tag); if (text) el.textContent = text; if (cls) el.className = cls; return el; };
 function updateProgress() {
+  if (hearingData) return updateHearingProgress();
   if (salonQuestions) return updateSalonProgress();
   const checks = [...document.querySelectorAll('.task-check')];
   const done = checks.filter(el => el.checked).length;
@@ -85,9 +88,10 @@ async function load() {
   if (response.status === 401) return false;
   if (!response.ok) throw new Error('読み込みに失敗しました。もう一度お試しください。');
   const data = await response.json();
+  hearingData = data.schema === 'hearing-v1' ? data : null;
   salonQuestions = selectedRecipient?.id === 'salon' && data.schema === 'salon-status-v2' ? data.questions : null;
   configureRecipientView();
-  if (salonQuestions) renderSalon(); else { groups = data; render(); }
+  if (hearingData) renderHearing(); else if (salonQuestions) renderSalon(); else { groups = data; render(); }
   return true;
 }
 $('show-password').addEventListener('click', () => {
@@ -108,6 +112,7 @@ $('login-form').addEventListener('submit', async event => {
 });
 $('workspace').addEventListener('input', () => { dirty = true; $('copy-status').textContent = ''; $('fallback').hidden = true; updateProgress(); saveDraft(); });
 function answerText() {
+  if (hearingData) return hearingAnswerText();
   if (salonQuestions) return salonAnswerText();
   const lines = [selectedRecipient?.title || 'サロン開業準備チェックリスト', ...(selectedRecipient ? [`宛先：${selectedRecipient.label}`] : []), `お名前：${$('name').value.trim() || '未記入'}`, ''];
   groups.forEach((g, m) => {
@@ -136,7 +141,7 @@ $('logout').addEventListener('click', async () => {
   try {
     const response = await api('/api/logout', {method: 'POST'});
     if (!response.ok) throw new Error();
-    groups = []; salonQuestions = null; dirty = false; $('sections').replaceChildren(); $('months').replaceChildren();
+    groups = []; salonQuestions = null; hearingData = null; dirty = false; $('sections').replaceChildren(); $('months').replaceChildren();
     $('name').value = ''; $('overall').value = ''; $('export-text').value = ''; $('fallback').hidden = true; $('copy-status').textContent = '';
     $('workspace').hidden = true; $('login').hidden = false; $('password').focus();
   } catch { $('copy-status').textContent = 'ログアウトできませんでした。接続を確認してください。'; }
@@ -153,7 +158,9 @@ $('clear-draft').addEventListener('click', () => {
     return;
   }
   $('name').value = ''; $('overall').value = '';
-  if (salonQuestions) {
+  if (hearingData) {
+    document.querySelectorAll('.hearing-answer, .hearing-summary').forEach(el => { el.value = ''; });
+  } else if (salonQuestions) {
     document.querySelectorAll('.salon-choice').forEach(el => { el.checked = false; });
     salonQuestions.forEach(q => { $(`salon-memo-${q.id}`).value = ''; });
   } else groups.forEach((g, m) => g.items.forEach((text, i) => {
@@ -179,6 +186,14 @@ function configureRecipientView() {
   document.querySelector('.summary p').lastChild.textContent = salonQuestions ? ' 回答済み' : originalSummary;
   $('overall').placeholder = salonQuestions ? '自由にご記入ください（任意）' : originalPlaceholder;
   $('months').hidden = !!salonQuestions;
+  document.querySelector('.closing').hidden = !!hearingData;
+  if (hearingData) {
+    document.querySelector('.intro .eyebrow').textContent = 'SUMIRE · WORK IMPROVEMENT';
+    document.querySelector('.intro p').textContent = `目的：${hearingData.purpose} 分かる範囲でご記入ください。`;
+    document.querySelector('.summary .eyebrow').textContent = 'YOUR ANSWERS';
+    document.querySelector('.summary p').lastChild.textContent = ' 回答済み';
+    document.querySelector('.export p').textContent = '質問への回答とヒアリング後の整理をまとめてコピーできます。メッセージなどに貼り付けて共有してください。';
+  }
 }
 function salonValues(q) {
   return [...document.querySelectorAll(`input[name="salon-${q.id}"]:checked`)].map(el => el.value);
@@ -272,7 +287,7 @@ async function initialize() {
         const result = await api('/api/select', {body: JSON.stringify({id: recipient.id})});
         if (!result.ok) throw new Error('宛先を選択できませんでした。');
         selectedRecipient = recipient;
-        $('login-button').firstChild.textContent = recipient.id === 'salon' ? '質問フォームを開く ' : 'チェックリストを開く ';
+        $('login-button').firstChild.textContent = ['salon', 'sumire'].includes(recipient.id) ? '質問フォームを開く ' : 'チェックリストを開く ';
         STORAGE_KEY = recipient.storageKey;
         $('login-title').textContent = `${recipient.label}への質問`;
         $('login-error').textContent = ''; $('password').value = '';
@@ -294,12 +309,13 @@ initialize().catch(error => {
 
 
 function incompleteControls() {
+  if (hearingData) return [...document.querySelectorAll('.hearing-answer')].filter(el => !el.value.trim());
   if (salonQuestions) return salonQuestions.filter(q => !salonValues(q).length).map(q => document.querySelector(`input[name="salon-${q.id}"]`));
   return [...document.querySelectorAll('.task-check')].filter(el => !el.checked);
 }
 function updateNavigation() {
   const remaining = incompleteControls().length;
-  const noun = salonQuestions ? '未回答' : '未完了';
+  const noun = salonQuestions || hearingData ? '未回答' : '未完了';
   $('next-status').textContent = remaining ? `${noun} あと${remaining}件 · 途中で閉じても続きから入力できます` : 'すべて入力できました。回答をコピーして共有できます。';
   $('next-incomplete').textContent = remaining ? `${noun}へ進む ↓` : '回答を確認・共有 ↗';
   document.querySelector('.track').setAttribute('aria-valuenow', String(parseInt($('percent').textContent, 10) || 0));
@@ -321,3 +337,73 @@ $('next-incomplete').addEventListener('click', () => {
   target.focus({preventScroll: true});
   target.scrollIntoView({block: 'center', behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'instant' : 'smooth'});
 });
+
+function hearingQuestions() { return hearingData.sections.flatMap(section => section.items); }
+function saveHearingDraft() {
+  try {
+    const answers = Object.fromEntries(hearingQuestions().map(q => [q.id, $(`hearing-${q.id}`).value]));
+    const summary = hearingData.summary.map((_, i) => $(`hearing-summary-${i}`).value);
+    localStorage.setItem(STORAGE_KEY, JSON.stringify({version: 1, schema: 'hearing-v1', name: $('name').value, answers, summary}));
+    dirty = false; $('save-status').textContent = 'このブラウザーに保存しました。';
+  } catch {
+    dirty = true; $('save-status').textContent = 'このブラウザーに保存できません。画面を閉じる前に回答をコピーしてください。';
+  }
+}
+function updateHearingProgress() {
+  const questions = hearingQuestions();
+  const done = questions.filter(q => $(`hearing-${q.id}`).value.trim()).length;
+  $('count').textContent = done; $('total').textContent = `/ ${questions.length}`;
+  const percent = questions.length ? Math.round(done / questions.length * 100) : 0;
+  $('percent').textContent = `${percent}%`; $('progress').style.width = `${percent}%`;
+  document.querySelectorAll('.hearing-item').forEach(row => row.classList.toggle('is-answered', !!row.querySelector('textarea').value.trim()));
+  updateNavigation();
+}
+function renderHearing() {
+  groups = []; $('sections').replaceChildren(); $('months').replaceChildren();
+  $('name').value = ''; $('overall').value = ''; dirty = false;
+  function addSection(title, id) {
+    const section = node('section', '', 'card month'); section.id = id;
+    const heading = node('h2', title); section.append(heading); $('sections').append(section);
+    const link = node('a', title); link.href = `#${id}`; $('months').append(link);
+    return section;
+  }
+  hearingData.sections.forEach((group, i) => {
+    const section = addSection(`${i + 1}. ${group.title}`, `hearing-section-${i}`);
+    group.items.forEach(q => {
+      const row = node('div', '', 'hearing-item');
+      const label = node('label', q.title); label.htmlFor = `hearing-${q.id}`;
+      const answer = node('textarea'); answer.id = label.htmlFor; answer.className = 'hearing-answer'; answer.rows = 4;
+      answer.placeholder = '回答をご記入ください（分かる範囲で構いません）';
+      row.append(label, answer); section.append(row);
+    });
+  });
+  const summary = addSection('ヒアリング後の整理', 'hearing-summary');
+  summary.append(node('p', 'ヒアリング後に記入する欄です。質問の回答数には含まれません。', 'hint'));
+  hearingData.summary.forEach((title, i) => {
+    const label = node('label', title); label.htmlFor = `hearing-summary-${i}`;
+    const answer = node('textarea'); answer.id = label.htmlFor; answer.rows = 3; answer.className = 'hearing-summary'; answer.placeholder = '整理した内容をご記入ください'; summary.append(label, answer);
+  });
+  $('form-title').textContent = selectedRecipient.title;
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (raw) {
+      const draft = JSON.parse(raw);
+      if (draft.schema !== 'hearing-v1' || draft.version !== 1 || !draft.answers || typeof draft.answers !== 'object') throw new Error();
+      $('name').value = typeof draft.name === 'string' ? draft.name : '';
+      hearingQuestions().forEach(q => { $(`hearing-${q.id}`).value = typeof draft.answers[q.id] === 'string' ? draft.answers[q.id] : ''; });
+      hearingData.summary.forEach((_, i) => { $(`hearing-summary-${i}`).value = typeof draft.summary?.[i] === 'string' ? draft.summary[i] : ''; });
+      $('save-status').textContent = 'このブラウザーに保存した回答を復元しました。';
+    } else $('save-status').textContent = '入力すると、このブラウザーに自動保存されます。';
+  } catch { $('save-status').textContent = '保存済みの回答を読み込めませんでした。入力内容はコピーで控えてください。'; }
+  updateHearingProgress(); $('login').hidden = true; $('workspace').hidden = false; focusWorkspace();
+}
+function hearingAnswerText() {
+  const lines = [selectedRecipient.title, `目的：${hearingData.purpose}`, `お名前：${$('name').value.trim() || '未記入'}`, ''];
+  hearingData.sections.forEach((group, i) => {
+    lines.push(`${i + 1}. ${group.title}`, '');
+    group.items.forEach(q => lines.push(q.title, `回答：${$(`hearing-${q.id}`).value.trim() || '未回答'}`, ''));
+  });
+  lines.push('ヒアリング後の整理', '');
+  hearingData.summary.forEach((title, i) => lines.push(`${title}：`, $(`hearing-summary-${i}`).value.trim() || '未記入', ''));
+  return lines.join('\n');
+}

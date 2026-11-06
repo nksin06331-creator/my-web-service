@@ -42,3 +42,5 @@ textarea{line-height:1.8}
 .skip-link:focus{top:10px}
 @media(max-width:600px){.workspace-tools{top:8px;padding:12px 14px;margin:20px 0}.workspace-tools>div{gap:6px}.workspace-tools p{line-height:1.6}.workspace-tools button{font-size:13px}.share-link{font-size:12px;padding:8px}.summary{flex-wrap:wrap}.progress-area{width:100%}.salon-option{padding:13px 12px}.intro h1{font-size:29px}.export button{width:100%}.salon-question legend{line-height:1.8}.task textarea{font-size:16px}}
 @media(prefers-reduced-motion:reduce){*,*::before,*::after{scroll-behavior:auto!important;transition:none!important}}
+
+.hearing-item{padding:22px 0;border-top:1px solid var(--line)}.hearing-item:first-of-type{margin-top:20px}.hearing-item label{font-weight:600;line-height:1.9}.hearing-item textarea{margin-top:14px}.hearing-item.is-answered textarea{border-color:#94ae9c;background:#f8fbf5}#hearing-summary>label{margin-top:24px}.month[id^="hearing-"]{scroll-margin-top:160px}
