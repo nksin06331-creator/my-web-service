@@ -3,12 +3,14 @@ const $ = id => document.getElementById(id);
 let groups = [];
 let salonQuestions = null;
 let hearingData = null;
+let templeSurvey = null;
 let dirty = false;
 let selectedRecipient = null;
 let recipients = [];
 let STORAGE_KEY = 'salon-opening-plan:2026-11:v1';
 const itemKey = (group, text) => JSON.stringify([group.month, text]);
 function saveDraft() {
+  if (templeSurvey) return saveTempleDraft();
   if (hearingData) return saveHearingDraft();
   if (salonQuestions) return saveSalonDraft();
   try {
@@ -46,6 +48,7 @@ function restoreDraft() {
 
 const node = (tag, text, cls) => { const el = document.createElement(tag); if (text) el.textContent = text; if (cls) el.className = cls; return el; };
 function updateProgress() {
+  if (templeSurvey) return updateTempleProgress();
   if (hearingData) return updateHearingProgress();
   if (salonQuestions) return updateSalonProgress();
   const checks = [...document.querySelectorAll('.task-check')];
@@ -88,10 +91,11 @@ async function load() {
   if (response.status === 401) return false;
   if (!response.ok) throw new Error('読み込みに失敗しました。もう一度お試しください。');
   const data = await response.json();
+  templeSurvey = selectedRecipient?.id === 'fukushoji' && data.schema === 'temple-survey-v1' ? data : null;
   hearingData = data.schema === 'hearing-v1' ? data : null;
   salonQuestions = selectedRecipient?.id === 'salon' && data.schema === 'salon-status-v2' ? data.questions : null;
   configureRecipientView();
-  if (hearingData) renderHearing(); else if (salonQuestions) renderSalon(); else { groups = data; render(); }
+  if (templeSurvey) renderTempleSurvey(); else if (hearingData) renderHearing(); else if (salonQuestions) renderSalon(); else { groups = data; render(); }
   return true;
 }
 $('show-password').addEventListener('click', () => {
@@ -112,6 +116,7 @@ $('login-form').addEventListener('submit', async event => {
 });
 $('workspace').addEventListener('input', () => { dirty = true; $('copy-status').textContent = ''; $('fallback').hidden = true; updateProgress(); saveDraft(); });
 function answerText() {
+  if (templeSurvey) return templeAnswerText();
   if (hearingData) return hearingAnswerText();
   if (salonQuestions) return salonAnswerText();
   const lines = [selectedRecipient?.title || 'サロン開業準備チェックリスト', ...(selectedRecipient ? [`宛先：${selectedRecipient.label}`] : []), `お名前：${$('name').value.trim() || '未記入'}`, ''];
@@ -141,7 +146,7 @@ $('logout').addEventListener('click', async () => {
   try {
     const response = await api('/api/logout', {method: 'POST'});
     if (!response.ok) throw new Error();
-    groups = []; salonQuestions = null; hearingData = null; dirty = false; $('sections').replaceChildren(); $('months').replaceChildren();
+    groups = []; salonQuestions = null; hearingData = null; templeSurvey = null; dirty = false; $('sections').replaceChildren(); $('months').replaceChildren();
     $('name').value = ''; $('overall').value = ''; $('export-text').value = ''; $('fallback').hidden = true; $('copy-status').textContent = '';
     $('workspace').hidden = true; $('login').hidden = false; $('password').focus();
   } catch { $('copy-status').textContent = 'ログアウトできませんでした。接続を確認してください。'; }
@@ -152,13 +157,17 @@ $('clear-draft').addEventListener('click', () => {
     if (selectedRecipient?.id === 'salon') {
       localStorage.removeItem('salon-opening-plan:2026-11:v1');
     }
+    if (selectedRecipient?.id === 'fukushoji') localStorage.removeItem('personal-note:fukushoji:hearing:v1');
     localStorage.removeItem(STORAGE_KEY);
   } catch {
     $('save-status').textContent = '保存データを削除できませんでした。ブラウザーのサイトデータ設定を確認してください。';
     return;
   }
   $('name').value = ''; $('overall').value = '';
-  if (hearingData) {
+  if (templeSurvey) {
+    document.querySelectorAll('.temple-choice').forEach(el => { el.checked = false; });
+    document.querySelectorAll('.temple-text, .temple-select').forEach(el => { el.value = ''; });
+  } else if (hearingData) {
     document.querySelectorAll('.hearing-answer, .hearing-summary').forEach(el => { el.value = ''; });
   } else if (salonQuestions) {
     document.querySelectorAll('.salon-choice').forEach(el => { el.checked = false; });
@@ -309,13 +318,14 @@ initialize().catch(error => {
 
 
 function incompleteControls() {
+  if (templeSurvey) return templeSurvey.questions.filter(q => !q.optional && !templeAnswered(q)).map(q => document.querySelector(`#temple-${q.id} input, #temple-${q.id} select, #temple-${q.id} textarea`));
   if (hearingData) return [...document.querySelectorAll('.hearing-answer')].filter(el => !el.value.trim());
   if (salonQuestions) return salonQuestions.filter(q => !salonValues(q).length).map(q => document.querySelector(`input[name="salon-${q.id}"]`));
   return [...document.querySelectorAll('.task-check')].filter(el => !el.checked);
 }
 function updateNavigation() {
   const remaining = incompleteControls().length;
-  const noun = salonQuestions || hearingData ? '未回答' : '未完了';
+  const noun = salonQuestions || hearingData || templeSurvey ? '未回答' : '未完了';
   $('next-status').textContent = remaining ? `${noun} あと${remaining}件 · 途中で閉じても続きから入力できます` : 'すべて入力できました。回答をコピーして共有できます。';
   $('next-incomplete').textContent = remaining ? `${noun}へ進む ↓` : '回答を確認・共有 ↗';
   document.querySelector('.track').setAttribute('aria-valuenow', String(parseInt($('percent').textContent, 10) || 0));
@@ -414,4 +424,120 @@ function hearingAnswerText() {
   hearingData.summary.forEach((title, i) => lines.push(`${title}：`, $(`hearing-summary-${i}`).value.trim() || '未記入', ''));
   if (hearingData.note) lines.push(`※${hearingData.note}`);
   return lines.join('\n');
+}
+
+function templeValues(q) {
+  if (q.type === 'text') return $(`temple-text-${q.id}`).value;
+  if (q.type === 'matrix') return Object.fromEntries(q.rows.map(row => [row.id, $(`temple-select-${row.id}`).value]));
+  return [...document.querySelectorAll(`input[name="temple-${q.id}"]:checked`)].map(el => el.value);
+}
+function templeAnswered(q) {
+  const value = templeValues(q);
+  if (q.type === 'text') return !!value.trim();
+  if (q.type === 'matrix') return q.rows.every(row => !!value[row.id]);
+  return value.length > 0;
+}
+function updateTempleProgress() {
+  const questions = templeSurvey.questions.filter(q => !q.optional);
+  const done = questions.filter(templeAnswered).length;
+  $('count').textContent = done; $('total').textContent = `/ ${questions.length}`;
+  $('percent').textContent = `${Math.round(done / questions.length * 100)}%`;
+  $('progress').style.width = $('percent').textContent;
+  templeSurvey.questions.forEach(q => $(`temple-${q.id}`).classList.toggle('is-answered', templeAnswered(q)));
+  updateNavigation();
+}
+function saveTempleDraft() {
+  try {
+    const answers = Object.fromEntries(templeSurvey.questions.map(q => [q.id, {value: templeValues(q), other: $(`temple-other-${q.id}`)?.value || ''}]));
+    localStorage.setItem(STORAGE_KEY, JSON.stringify({version: 2, schema: templeSurvey.schema, name: $('name').value, answers}));
+    dirty = false; $('save-status').textContent = 'このブラウザーに保存しました。';
+  } catch {
+    dirty = true; $('save-status').textContent = 'このブラウザーに保存できません。画面を閉じる前に回答をコピーしてください。';
+  }
+}
+function renderTempleSurvey() {
+  groups = []; $('sections').replaceChildren(); $('months').replaceChildren();
+  $('months').hidden = true; document.querySelector('.closing').hidden = true;
+  $('name').value = ''; $('overall').value = ''; dirty = false;
+  document.querySelector('.intro .eyebrow').textContent = 'FUKUSHOJI · WORK IMPROVEMENT';
+  $('form-title').textContent = templeSurvey.title;
+  const intro = document.querySelector('.intro p'); intro.replaceChildren(node('strong', 'アンケートの目的'), node('br'), node('span', templeSurvey.purpose), node('br'), node('span', templeSurvey.introduction), node('br'), node('span', templeSurvey.estimate));
+  document.querySelector('.summary .eyebrow').textContent = 'YOUR ANSWERS';
+  document.querySelector('.summary p').lastChild.textContent = ' 回答済み（任意のQ10を除く）';
+  document.querySelector('.export p').textContent = '回答全文をコピーできます。コピーしたテキストをメッセージなどに貼り付けて共有してください。';
+  const choices = (q, section) => {
+    q.options.forEach((option, i) => {
+      const label = node('label', '', 'salon-option');
+      const input = node('input'); input.type = q.type === 'multiple' ? 'checkbox' : 'radio';
+      input.name = `temple-${q.id}`; input.id = `temple-choice-${q.id}-${i}`; input.value = option; input.className = 'temple-choice';
+      input.addEventListener('input', () => {
+        if (!input.checked || !q.exclusive) return;
+        section.querySelectorAll('.temple-choice').forEach(el => {
+          if (el !== input && (q.exclusive.includes(input.value) || q.exclusive.includes(el.value))) el.checked = false;
+        });
+      });
+      label.append(input, node('span', option)); section.append(label);
+    });
+    const clear = node('button', '選択を解除', 'quiet'); clear.type = 'button';
+    clear.addEventListener('click', () => { section.querySelectorAll('input').forEach(el => { el.checked = false; }); section.dispatchEvent(new Event('input', {bubbles: true})); });
+    section.append(clear);
+    if (q.options.includes('その他')) {
+      const label = node('label', 'その他の内容（任意）'); label.htmlFor = `temple-other-${q.id}`;
+      const other = node('textarea'); other.id = label.htmlFor; other.className = 'temple-text'; other.rows = 2; section.append(label, other);
+    }
+  };
+  templeSurvey.questions.forEach((q, i) => {
+    const section = node('fieldset', '', 'card temple-question'); section.id = `temple-${q.id}`;
+    const type = q.type === 'multiple' ? '（複数選択可）' : q.type === 'single' ? '（単一選択）' : q.type === 'matrix' ? '（項目ごとに選択）' : q.optional ? '（自由記述・任意回答）' : '（自由記述）';
+    section.append(node('legend', `Q${i + 1}. ${q.title}${type}`));
+    if (q.help) section.append(node('p', q.help, 'hint'));
+    if (q.type === 'single' || q.type === 'multiple') choices(q, section);
+    else if (q.type === 'matrix') q.rows.forEach(row => {
+      const label = node('label', row.title); label.htmlFor = `temple-select-${row.id}`;
+      const select = node('select'); select.id = label.htmlFor; select.className = 'temple-select';
+      const empty = node('option', '選択してください'); empty.value = ''; select.append(empty);
+      q.options.forEach(option => { const el = node('option', option); el.value = option; select.append(el); });
+      section.append(label, select);
+    });
+    else {
+      const label = node('label', `Q${i + 1}の回答`, 'sr-only'); label.htmlFor = `temple-text-${q.id}`;
+      const text = node('textarea'); text.id = label.htmlFor; text.className = 'temple-text'; text.rows = 4; section.append(label, text);
+    }
+    $('sections').append(section);
+  });
+  const closing = node('section', '', 'card temple-thanks'); closing.append(node('h2', templeSurvey.thanks), node('p', templeSurvey.closing)); $('sections').append(closing);
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (raw) {
+      const draft = JSON.parse(raw);
+      if (draft?.version !== 2 || draft.schema !== templeSurvey.schema || !draft.answers || typeof draft.answers !== 'object') throw Error();
+      $('name').value = typeof draft.name === 'string' ? draft.name : '';
+      templeSurvey.questions.forEach(q => {
+        const answer = draft.answers[q.id]; if (!answer || typeof answer !== 'object') return;
+        if (q.type === 'text') $(`temple-text-${q.id}`).value = typeof answer.value === 'string' ? answer.value : '';
+        else if (q.type === 'matrix') q.rows.forEach(row => { $(`temple-select-${row.id}`).value = q.options.includes(answer.value?.[row.id]) ? answer.value[row.id] : ''; });
+        else {
+          let values = Array.isArray(answer.value) ? answer.value.filter(value => q.options.includes(value)) : [];
+          if (q.type === 'single') values = values.slice(0, 1);
+          if (values.some(value => q.exclusive?.includes(value))) values = values.filter(value => q.exclusive.includes(value)).slice(0, 1);
+          document.querySelectorAll(`input[name="temple-${q.id}"]`).forEach(el => { el.checked = values.includes(el.value); });
+        }
+        if ($(`temple-other-${q.id}`)) $(`temple-other-${q.id}`).value = typeof answer.other === 'string' ? answer.other : '';
+      });
+      $('save-status').textContent = 'このブラウザーに保存した回答を復元しました。';
+    } else $('save-status').textContent = '入力すると、このブラウザーに自動保存されます。';
+  } catch { $('save-status').textContent = '保存済みの回答を読み込めませんでした。入力内容はコピーで控えてください。'; }
+  updateTempleProgress(); $('login').hidden = true; $('workspace').hidden = false; focusWorkspace();
+}
+function templeAnswerText() {
+  const lines = [templeSurvey.title, 'アンケートの目的', templeSurvey.purpose, templeSurvey.introduction, templeSurvey.estimate, `お名前：${$('name').value.trim() || '未記入'}`, ''];
+  templeSurvey.questions.forEach((q, i) => {
+    lines.push(`Q${i + 1}. ${q.title}`);
+    const value = templeValues(q);
+    if (q.type === 'matrix') q.rows.forEach(row => lines.push(`${row.title}：${value[row.id] || '未回答'}`));
+    else lines.push(`回答：${q.type === 'text' ? value.trim() || '未記入' : value.join('／') || '未回答'}`);
+    const other = $(`temple-other-${q.id}`)?.value.trim(); if (other) lines.push(`その他の内容：${other}`);
+    lines.push('');
+  });
+  lines.push(templeSurvey.thanks, templeSurvey.closing); return lines.join('\n');
 }
