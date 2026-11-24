@@ -461,7 +461,7 @@ function renderTempleSurvey() {
   $('name').value = ''; $('overall').value = ''; dirty = false;
   document.querySelector('.intro .eyebrow').textContent = 'FUKUSHOJI · WORK IMPROVEMENT';
   $('form-title').textContent = templeSurvey.title;
-  const intro = document.querySelector('.intro p'); intro.replaceChildren(node('strong', 'アンケートの目的'), node('br'), node('span', templeSurvey.purpose), node('br'), node('span', templeSurvey.introduction), node('br'), node('span', templeSurvey.estimate));
+  const intro = document.querySelector('.intro p'); intro.replaceChildren(...(templeSurvey.authorIntroduction ? [node('span', templeSurvey.authorIntroduction, 'author-introduction'), node('br'), node('br')] : []), node('strong', 'アンケートの目的'), node('br'), node('span', templeSurvey.purpose), node('br'), node('span', templeSurvey.introduction), node('br'), node('span', templeSurvey.estimate));
   document.querySelector('.summary .eyebrow').textContent = 'YOUR ANSWERS';
   document.querySelector('.summary p').lastChild.textContent = ' 回答済み（任意のQ10を除く）';
   document.querySelector('.export p').textContent = '回答全文をコピーできます。コピーしたテキストをメッセージなどに貼り付けて共有してください。';
@@ -530,7 +530,7 @@ function renderTempleSurvey() {
   updateTempleProgress(); $('login').hidden = true; $('workspace').hidden = false; focusWorkspace();
 }
 function templeAnswerText() {
-  const lines = [templeSurvey.title, 'アンケートの目的', templeSurvey.purpose, templeSurvey.introduction, templeSurvey.estimate, `お名前：${$('name').value.trim() || '未記入'}`, ''];
+  const lines = [templeSurvey.title, ...(templeSurvey.authorIntroduction ? [templeSurvey.authorIntroduction, ''] : []), 'アンケートの目的', templeSurvey.purpose, templeSurvey.introduction, templeSurvey.estimate, `お名前：${$('name').value.trim() || '未記入'}`, ''];
   templeSurvey.questions.forEach((q, i) => {
     lines.push(`Q${i + 1}. ${q.title}`);
     const value = templeValues(q);
